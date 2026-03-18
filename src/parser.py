@@ -28,7 +28,7 @@ class ImplicitJoin(visitors.Visitor):
         if isinstance(node, (tuple, ast.Node)):
             todo.append((Ancestor(), node))
         else:
-            raise ValueError('Bad argument, expected a ast.Node instance or a tuple')
+            raise ValueError("Bad argument, expected a ast.Node instance or a tuple")
 
         while todo:
             ancestors, node = todo.popleft()
@@ -93,8 +93,8 @@ class ImplicitJoin(visitors.Visitor):
 
     def visit_JoinExpr(self, ancestors, node):
         """
-            we keep all the table name including renaming, and all the predicate
-            in the join condition
+        we keep all the table name including renaming, and all the predicate
+        in the join condition
         """
         idx = 0
         # left is table name
@@ -137,12 +137,16 @@ class ImplicitJoin(visitors.Visitor):
             if len(self.qual) == 1:
                 node.whereClause = self.qual[0]
             elif len(self.qual) > 1:
-                node.whereClause = ast.BoolExpr(boolop=enums.BoolExprType.AND_EXPR, args=())
+                node.whereClause = ast.BoolExpr(
+                    boolop=enums.BoolExprType.AND_EXPR, args=()
+                )
                 for item in self.qual:
                     node.whereClause.args += (item,)
         else:
             temp = node.whereClause
-            node.whereClause = ast.BoolExpr(boolop=enums.BoolExprType.AND_EXPR, args=(temp,))
+            node.whereClause = ast.BoolExpr(
+                boolop=enums.BoolExprType.AND_EXPR, args=(temp,)
+            )
             for item in self.qual:
                 node.whereClause.args += (item,)
 
@@ -162,7 +166,11 @@ class aggregationVisit(visitors.Visitor):
             # all the written code does not have aggregation
             # may be revisited for max later
             if isinstance(node.val, ast.FuncCall):
-                if node.val.funcname[0].val == 'sum' or node.val.funcname[0].val == 'count' or node.val.funcname[0].val == 'max':
+                if (
+                    node.val.funcname[0].sval == "sum"
+                    or node.val.funcname[0].sval == "count"
+                    or node.val.funcname[0].sval == "max"
+                ):
                     return visitors.Delete
 
     def visit_SelectStmt(self, ancestors, node):
@@ -174,14 +182,16 @@ class aggregationVisit(visitors.Visitor):
         for item in node.targetList:
             if isinstance(item.val, ast.FuncCall):
                 if len(item.val.funcname) == 1:
-                    if item.val.funcname[0].val == 'count':
-                        node.targetList += (ast.ResTarget(val=ast.A_Const(val=ast.Integer(1))),)
-                    elif item.val.funcname[0].val == 'sum':
+                    if item.val.funcname[0].sval == "count":
+                        node.targetList += (
+                            ast.ResTarget(val=ast.A_Const(val=ast.Integer(1))),
+                        )
+                    elif item.val.funcname[0].sval == "sum":
                         temp = item.val.args[0]
                         node.targetList += (ast.ResTarget(val=temp),)
-                    elif item.val.funcname[0].val == 'max':
+                    elif item.val.funcname[0].sval == "max":
                         temp = item.val.args[0]
-                        self.index = item.val.args[1].val.val
+                        self.index = item.val.args[1].val.ival
                         node.targetList += (ast.ResTarget(val=temp),)
                 else:
                     pass
@@ -199,7 +209,7 @@ def get_primary_keys(pks, relations):
         if pk[0] in relation:
             left = pk[2].find("(")
             right = pk[2].find(")")
-            key = pk[2][left + 1:right]
+            key = pk[2][left + 1 : right]
             res.append(pk[0] + "." + key)
     return res
 
@@ -225,11 +235,17 @@ class userAdder(visitors.Visitor):
         for r in self.keys:
             table_attribute = r.split(".")
             for name in renaming[table_attribute[0]]:
-                rename = 'id' + str(idx)
-                table = ast.String(value=rename)
+                rename = "id" + str(idx)
+                table = ast.String(sval=rename)
                 attri = ast.ColumnRef(fields=(name, table_attribute[1]))
-                node.targetList += (ast.ResTarget(val=ast.FuncCall(funcname=(ast.String(value='concat'),),
-                                                                   args=(table, attri)), name=rename),)
+                node.targetList += (
+                    ast.ResTarget(
+                        val=ast.FuncCall(
+                            funcname=(ast.String(sval="concat"),), args=(table, attri)
+                        ),
+                        name=rename,
+                    ),
+                )
                 # node.targetList += (ast.ResTarget(val=ast.ColumnRef(fields=(name,
                 #                                                             table_attribute[1])), name=rename),)
                 idx += 1
@@ -266,10 +282,10 @@ class complete_query(visitors.Visitor):
             split = fk[2].split("REFERENCES ")
             left1 = split[0].find("(")
             right1 = split[0].find(")")
-            src_key = split[0][left1 + 1:right1]
+            src_key = split[0][left1 + 1 : right1]
             left2 = split[1].find("(")
             right2 = split[1].find(")")
-            dest_key = split[1][left2 + 1:right2]
+            dest_key = split[1][left2 + 1 : right2]
             dest_table = split[1][0:left2]
             self.fk_dic[(src_table, src_key)] = (dest_table, dest_key)
 
@@ -278,32 +294,53 @@ class complete_query(visitors.Visitor):
         # for each dest table, there are four cases for foreign key condition
         for dest in dest_rename:
             # r1.k1 = r2.k2
-            c1 = ast.A_Expr(kind=enums.A_Expr_Kind.AEXPR_OP, name=(ast.String(value="="),),
-                            lexpr=ast.ColumnRef(
-                                fields=(ast.String(value=src_rename), ast.String(value=src_key[0].strip()))),
-                            rexpr=ast.ColumnRef(
-                                fields=(ast.String(value=dest), ast.String(value=dest_key[0].strip()))))
+            c1 = ast.A_Expr(
+                kind=enums.A_Expr_Kind.AEXPR_OP,
+                name=(ast.String(sval="="),),
+                lexpr=ast.ColumnRef(
+                    fields=(
+                        ast.String(sval=src_rename),
+                        ast.String(sval=src_key[0].strip()),
+                    )
+                ),
+                rexpr=ast.ColumnRef(
+                    fields=(ast.String(sval=dest), ast.String(sval=dest_key[0].strip()))
+                ),
+            )
 
             # r2.k2 = r1.k1
-            c2 = ast.A_Expr(kind=enums.A_Expr_Kind.AEXPR_OP, name=(ast.String(value="="),),
-                            lexpr=ast.ColumnRef(
-                                fields=(ast.String(value=dest), ast.String(value=dest_key[0].strip()),)),
-                            rexpr=ast.ColumnRef(
-                                fields=(ast.String(value=src_rename), ast.String(value=src_key[0].strip()),)))
+            c2 = ast.A_Expr(
+                kind=enums.A_Expr_Kind.AEXPR_OP,
+                name=(ast.String(sval="="),),
+                lexpr=ast.ColumnRef(
+                    fields=(
+                        ast.String(sval=dest),
+                        ast.String(sval=dest_key[0].strip()),
+                    )
+                ),
+                rexpr=ast.ColumnRef(
+                    fields=(
+                        ast.String(sval=src_rename),
+                        ast.String(sval=src_key[0].strip()),
+                    )
+                ),
+            )
 
             # k1 = k2
-            c3 = ast.A_Expr(kind=enums.A_Expr_Kind.AEXPR_OP, name=(ast.String(value="="),),
-                            lexpr=ast.ColumnRef(
-                                fields=(ast.String(value=src_key[0].strip()),)),
-                            rexpr=ast.ColumnRef(
-                                fields=(ast.String(value=dest_key[0].strip()),)))
+            c3 = ast.A_Expr(
+                kind=enums.A_Expr_Kind.AEXPR_OP,
+                name=(ast.String(sval="="),),
+                lexpr=ast.ColumnRef(fields=(ast.String(sval=src_key[0].strip()),)),
+                rexpr=ast.ColumnRef(fields=(ast.String(sval=dest_key[0].strip()),)),
+            )
 
             # k2 = k1
-            c4 = ast.A_Expr(kind=enums.A_Expr_Kind.AEXPR_OP, name=(ast.String(value="="),),
-                            lexpr=ast.ColumnRef(
-                                fields=(ast.String(value=dest_key[0].strip()),)),
-                            rexpr=ast.ColumnRef(
-                                fields=(ast.String(value=src_key[0].strip()),)))
+            c4 = ast.A_Expr(
+                kind=enums.A_Expr_Kind.AEXPR_OP,
+                name=(ast.String(sval="="),),
+                lexpr=ast.ColumnRef(fields=(ast.String(sval=dest_key[0].strip()),)),
+                rexpr=ast.ColumnRef(fields=(ast.String(sval=src_key[0].strip()),)),
+            )
 
             r1 = check_expr(c1)
             r1(node.whereClause)
@@ -334,11 +371,18 @@ class complete_query(visitors.Visitor):
             for fk in self.fk_dic.keys():
                 # if src table is in the current query, and destination table is not in
                 # we add the destination table into the query, and the join condition
-                if fk[0] in relation_dict.keys() and self.fk_dic[fk][0] not in relation_dict.keys():
+                if (
+                    fk[0] in relation_dict.keys()
+                    and self.fk_dic[fk][0] not in relation_dict.keys()
+                ):
                     # renaming the upcoming table
                     rename = self.fk_dic[fk][0] + str(0)
                     # syntax node for this table
-                    item = ast.RangeVar(relname=self.fk_dic[fk][0], inh=True, alias=ast.Alias(aliasname=rename))
+                    item = ast.RangeVar(
+                        relname=self.fk_dic[fk][0],
+                        inh=True,
+                        alias=ast.Alias(aliasname=rename),
+                    )
                     # add to the select statement
                     node.fromClause += (item,)
                     # update renaming
@@ -348,11 +392,22 @@ class complete_query(visitors.Visitor):
                     src_key = fk[1].split(",")
                     dest_key = self.fk_dic[fk][1].split(",")
                     for i in range(len(src_key)):
-                        c = ast.A_Expr(kind=enums.A_Expr_Kind.AEXPR_OP, name=(ast.String(value="="),),
-                                       lexpr=ast.ColumnRef(fields=(ast.String(value=relation_dict[fk[0]][0]),
-                                                                   ast.String(value=src_key[i].strip()))),
-                                       rexpr=ast.ColumnRef(
-                                           fields=(ast.String(value=rename), ast.String(value=dest_key[i].strip()))))
+                        c = ast.A_Expr(
+                            kind=enums.A_Expr_Kind.AEXPR_OP,
+                            name=(ast.String(sval="="),),
+                            lexpr=ast.ColumnRef(
+                                fields=(
+                                    ast.String(sval=relation_dict[fk[0]][0]),
+                                    ast.String(sval=src_key[i].strip()),
+                                )
+                            ),
+                            rexpr=ast.ColumnRef(
+                                fields=(
+                                    ast.String(sval=rename),
+                                    ast.String(sval=dest_key[i].strip()),
+                                )
+                            ),
+                        )
                         # print(stream.RawStream()(c))
                         conditions += (c,)
                     # add the join condition to the select statement
@@ -360,18 +415,25 @@ class complete_query(visitors.Visitor):
                         if len(conditions) == 1:
                             node.whereClause = conditions[0]
                         elif len(conditions) > 1:
-                            node.whereClause = ast.BoolExpr(boolop=enums.BoolExprType.AND_EXPR, args=())
+                            node.whereClause = ast.BoolExpr(
+                                boolop=enums.BoolExprType.AND_EXPR, args=()
+                            )
                             for condition in conditions:
                                 node.whereClause.args += (condition,)
                     else:
                         temp = node.whereClause
-                        node.whereClause = ast.BoolExpr(boolop=enums.BoolExprType.AND_EXPR, args=(temp,))
+                        node.whereClause = ast.BoolExpr(
+                            boolop=enums.BoolExprType.AND_EXPR, args=(temp,)
+                        )
                         for condition in conditions:
                             node.whereClause.args += (condition,)
                     visited = True
                 # if both src and dest tables are in the query
                 # we check if the foreign key condition is in the whereClause
-                if fk[0] in relation_dict.keys() and self.fk_dic[fk][0] in relation_dict.keys():
+                if (
+                    fk[0] in relation_dict.keys()
+                    and self.fk_dic[fk][0] in relation_dict.keys()
+                ):
                     src_rename = relation_dict[fk[0]]
                     dest_rename = relation_dict[self.fk_dic[fk][0]]
                     src_key = fk[1].split(",")
@@ -379,34 +441,57 @@ class complete_query(visitors.Visitor):
                     # for each renaming of the src table
                     # we check there is at least one dest table renaming connecting to this src table
                     for src in src_rename:
-                        if not (self.check_condition(node, src, dest_rename, src_key, dest_key)):
+                        if not (
+                            self.check_condition(
+                                node, src, dest_rename, src_key, dest_key
+                            )
+                        ):
                             # add another destination table renaming
-                            rename = self.fk_dic[fk][0] + str(len(relation_dict[self.fk_dic[fk][0]]))
+                            rename = self.fk_dic[fk][0] + str(
+                                len(relation_dict[self.fk_dic[fk][0]])
+                            )
                             relation_dict[self.fk_dic[fk][0]].append(rename)
-                            item = ast.RangeVar(relname=self.fk_dic[fk][0], inh=True, alias=ast.Alias(aliasname=rename))
+                            item = ast.RangeVar(
+                                relname=self.fk_dic[fk][0],
+                                inh=True,
+                                alias=ast.Alias(aliasname=rename),
+                            )
                             # add to the select statement
                             node.fromClause += (item,)
                             conditions = ()
                             for i in range(len(src_key)):
-                                c = ast.A_Expr(kind=enums.A_Expr_Kind.AEXPR_OP, name=(ast.String(value="="),),
-                                               lexpr=ast.ColumnRef(
-                                                   fields=(ast.String(value=src),
-                                                           ast.String(value=src_key[i].strip()))),
-                                               rexpr=ast.ColumnRef(
-                                                   fields=(ast.String(value=rename),
-                                                           ast.String(value=dest_key[i].strip()))))
+                                c = ast.A_Expr(
+                                    kind=enums.A_Expr_Kind.AEXPR_OP,
+                                    name=(ast.String(sval="="),),
+                                    lexpr=ast.ColumnRef(
+                                        fields=(
+                                            ast.String(sval=src),
+                                            ast.String(sval=src_key[i].strip()),
+                                        )
+                                    ),
+                                    rexpr=ast.ColumnRef(
+                                        fields=(
+                                            ast.String(sval=rename),
+                                            ast.String(sval=dest_key[i].strip()),
+                                        )
+                                    ),
+                                )
                                 conditions += (c,)
                             # add the join condition to the select statement
                             if node.whereClause is None:
                                 if len(conditions) == 1:
                                     node.whereClause = conditions
                                 elif len(conditions) > 1:
-                                    node.whereClause = ast.BoolExpr(boolop=enums.BoolExprType.AND_EXPR, args=())
+                                    node.whereClause = ast.BoolExpr(
+                                        boolop=enums.BoolExprType.AND_EXPR, args=()
+                                    )
                                     for condition in conditions:
                                         node.whereClause.args += (condition,)
                             else:
                                 temp = node.whereClause
-                                node.whereClause = ast.BoolExpr(boolop=enums.BoolExprType.AND_EXPR, args=(temp,))
+                                node.whereClause = ast.BoolExpr(
+                                    boolop=enums.BoolExprType.AND_EXPR, args=(temp,)
+                                )
                                 for condition in conditions:
                                     node.whereClause.args += (condition,)
 
@@ -414,9 +499,10 @@ class complete_query(visitors.Visitor):
 
 
 class add_table_name(visitors.Visitor):
-    '''
+    """
     add the table either renaming or not to the column
-    '''
+    """
+
     def __init__(self, select_node, schema):
         # get the renaming of the current node
         renaming = get_rename()
@@ -428,20 +514,22 @@ class add_table_name(visitors.Visitor):
         # get fields
         fields = node.fields
         if len(fields) == 1:
-            attribute = fields[0].val
+            attribute = fields[0].sval
             for table in self.rename_dict.keys():
                 table_attr = self.schema[table]
                 if attribute in table_attr:
                     # self.rename_dict[table] length should be 1, otherwise this
                     # is an ambiguous column
-                    node.fields = (ast.String(value=self.rename_dict[table][0]),) + node.fields
+                    node.fields = (
+                        ast.String(sval=self.rename_dict[table][0]),
+                    ) + node.fields
 
 
 class get_rename(visitors.Visitor):
-    '''
+    """
     get all the current renaming in tis select statement
     this is mainly a helper visitor for other functional visitor
-    '''
+    """
 
     def __init__(self):
         self.rename_dict = {}
@@ -478,7 +566,9 @@ class group_by(visitors.Visitor):
         # remove the group column to the selection (targetList)
         self.root = node
         self.group = node.groupClause
-        new_selection = ast.FuncCall(funcname=(ast.String(value='concat'),), args=self.group)
+        new_selection = ast.FuncCall(
+            funcname=(ast.String(sval="concat"),), args=self.group
+        )
         node.targetList = (ast.ResTarget(val=new_selection),) + node.targetList
         node.groupClause = None
 
@@ -498,6 +588,7 @@ class check_type(visitors.Visitor):
     this visitor will check the type of the input query
     and then decide which algorithm to process the input query
     """
+
     def __init__(self, relations):
         self.subquery = False
         self.groupby = False
@@ -512,7 +603,7 @@ class check_type(visitors.Visitor):
             for item in node.targetList:
                 if isinstance(item.val, ast.FuncCall):
                     if len(item.val.funcname) == 1:
-                        if item.val.funcname[0].val == 'max':
+                        if item.val.funcname[0].sval == "max":
                             self.max = True
         else:
             # if there is a subquery, we have to get implicit join first
@@ -522,7 +613,7 @@ class check_type(visitors.Visitor):
             for item in node.targetList:
                 if isinstance(item.val, ast.FuncCall):
                     if len(item.val.funcname) == 1:
-                        if item.val.funcname[0].val == 'max':
+                        if item.val.funcname[0].sval == "max":
                             self.max = True
             # check l
             renaming = get_rename()
@@ -541,5 +632,5 @@ class check_type(visitors.Visitor):
                 self.groupby = True
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

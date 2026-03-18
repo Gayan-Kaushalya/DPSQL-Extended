@@ -1,0 +1,3 @@
+config/database.ini
+__pycache__/
+.venv/
