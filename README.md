@@ -81,6 +81,10 @@ Follow these steps to set up the data and collect experiment results:
    ```
 6. **View Results**: The output will be available in `./Sample/result/TPCH`.
 
+## Query Rewriting & Subquery Unnesting
+
+DPSQL automatically rewrites and unnests subqueries to standard relational joins to ensure differential privacy mechanisms can be seamlessly applied. Through a custom Abstract Syntax Tree (AST) visitor (`UnnestSubqueries` in `src/parser.py`) built using `pglast`, the system traverses the AST and flattens nested `IN`, `ANY`, and `EXISTS` subqueries found in the `WHERE` clause into standard multi-table joins, while automatically preserving and linking the original filtering conditions.
+
 ## Future Plans
 
 * Support for distinct count queries (projection).

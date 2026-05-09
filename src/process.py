@@ -11,8 +11,16 @@ import src.algorithm.FastSJA
 import src.algorithm.MaxSJA1
 import src.algorithm.MaxSJA2
 import src.algorithm.OptSJA
-from src.parser import userAdder, ImplicitJoin, complete_query, aggregationVisit, get_primary_keys, add_table_name, \
-    group_by
+from src.parser import (
+    userAdder,
+    ImplicitJoin,
+    complete_query,
+    aggregationVisit,
+    get_primary_keys,
+    add_table_name,
+    group_by,
+    apply_unnest_subqueries,
+)
 from src.util import pg_exec
 
 
@@ -49,28 +57,35 @@ class FastSJA(algorithm):
         selectstmt = root[0].stmt
         if not isinstance(selectstmt, ast.SelectStmt):
             raise Exception
+        apply_unnest_subqueries(selectstmt)
         ImplicitJoin()(selectstmt)
         add_table_name(selectstmt, self.schema)(selectstmt)
         aggregationVisit()(selectstmt)
         complete_query(self.fks)(selectstmt)
         userAdder(private_pk)(selectstmt)
-        self.rewrite_query = (stream.RawStream()(selectstmt))
+        self.rewrite_query = stream.RawStream()(selectstmt)
 
     def process(self):
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
-        processor_num = int(self.parameters['processor_num'])
-        global_sensitivity = float(self.parameters['global_sensitivity'])
-        approximate_factor = float(self.parameters['approximate_factor'])
-        src.algorithm.FastSJA.processFastSJA(self.input_result, e=epsilon, b=beta, gs=global_sensitivity,
-                                     p_num=processor_num, afactor=approximate_factor)
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
+        processor_num = int(self.parameters["processor_num"])
+        global_sensitivity = float(self.parameters["global_sensitivity"])
+        approximate_factor = float(self.parameters["approximate_factor"])
+        src.algorithm.FastSJA.processFastSJA(
+            self.input_result,
+            e=epsilon,
+            b=beta,
+            gs=global_sensitivity,
+            p_num=processor_num,
+            afactor=approximate_factor,
+        )
         self.true_result, self.noise_result = src.algorithm.FastSJA.get_result()
 
 
 class OptSJA(FastSJA):
     def process(self):
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
         src.algorithm.OptSJA.processOpt(self.input_result, e=epsilon, b=beta)
         self.true_result, self.noise_result = src.algorithm.OptSJA.get_result()
 
@@ -83,30 +98,39 @@ class MultiSJF(algorithm):
         selectstmt = root[0].stmt
         if not isinstance(selectstmt, ast.SelectStmt):
             raise Exception
+        apply_unnest_subqueries(selectstmt)
         ImplicitJoin()(selectstmt)
         add_table_name(selectstmt, self.schema)(selectstmt)
         group_by()(selectstmt)
         aggregationVisit()(selectstmt)
         complete_query(self.fks)(selectstmt)
         userAdder(private_pk)(selectstmt)
-        self.rewrite_query = (stream.RawStream()(selectstmt))
+        self.rewrite_query = stream.RawStream()(selectstmt)
 
     def process(self):
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
-        delta = float(self.parameters['delta'])
-        src.algorithm.MultiSJF.ProcessMultiQSJF(self.input_result, e=epsilon, b=beta, d=delta)
-        self.true_result, self.noise_result, self.error = src.algorithm.MultiSJF.get_result()
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
+        delta = float(self.parameters["delta"])
+        src.algorithm.MultiSJF.ProcessMultiQSJF(
+            self.input_result, e=epsilon, b=beta, d=delta
+        )
+        self.true_result, self.noise_result, self.error = (
+            src.algorithm.MultiSJF.get_result()
+        )
 
 
 class MultiSJA(MultiSJF):
 
     def process(self):
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
-        delta = float(self.parameters['delta'])
-        src.algorithm.MultiSJA.ProcessMultiQSJA(self.input_result, e=epsilon, b=beta, Del=delta)
-        self.true_result, self.noise_result, self.error = src.algorithm.MultiSJA.get_result()
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
+        delta = float(self.parameters["delta"])
+        src.algorithm.MultiSJA.ProcessMultiQSJA(
+            self.input_result, e=epsilon, b=beta, Del=delta
+        )
+        self.true_result, self.noise_result, self.error = (
+            src.algorithm.MultiSJA.get_result()
+        )
 
 
 class MaxSJA1(algorithm):
@@ -120,6 +144,7 @@ class MaxSJA1(algorithm):
         selectstmt = root[0].stmt
         if not isinstance(selectstmt, ast.SelectStmt):
             raise Exception
+        apply_unnest_subqueries(selectstmt)
         ImplicitJoin()(selectstmt)
         add_table_name(selectstmt, self.schema)(selectstmt)
         agg = aggregationVisit()
@@ -127,18 +152,26 @@ class MaxSJA1(algorithm):
         complete_query(self.fks)(selectstmt)
         userAdder(private_pk)(selectstmt)
         self.k = agg.index
-        self.rewrite_query = (stream.RawStream()(selectstmt))
+        self.rewrite_query = stream.RawStream()(selectstmt)
 
     def process(self):
         if self.k == 0:
             self.k = len(self.input_result)
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
-        error_level = float(self.parameters['error_level'])
-        upper_bound = float(self.parameters['upper_bound'])
-        src.algorithm.MaxSJA1.processMaxSJA1(self.input_result, self.k, e=epsilon, b=beta,
-                                                             error=error_level, ub=upper_bound)
-        self.true_result, self.noise_result, self.error = src.algorithm.MaxSJA1.get_result()
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
+        error_level = float(self.parameters["error_level"])
+        upper_bound = float(self.parameters["upper_bound"])
+        src.algorithm.MaxSJA1.processMaxSJA1(
+            self.input_result,
+            self.k,
+            e=epsilon,
+            b=beta,
+            error=error_level,
+            ub=upper_bound,
+        )
+        self.true_result, self.noise_result, self.error = (
+            src.algorithm.MaxSJA1.get_result()
+        )
 
 
 class MaxSJA2(MaxSJA1):
@@ -146,14 +179,23 @@ class MaxSJA2(MaxSJA1):
     def process(self):
         if self.k == 0:
             self.k = len(self.input_result)
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
-        processor_num = int(self.parameters['processor_num'])
-        error_level = float(self.parameters['error_level'])
-        upper_bound = float(self.parameters['upper_bound'])
-        src.algorithm.MaxSJA2.processMaxSJA2(self.input_result, self.k, e=epsilon, b=beta,
-                                                             error=error_level, ub=upper_bound, p_num=processor_num)
-        self.true_result, self.noise_result, self.error = src.algorithm.MaxSJA2.get_result()
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
+        processor_num = int(self.parameters["processor_num"])
+        error_level = float(self.parameters["error_level"])
+        upper_bound = float(self.parameters["upper_bound"])
+        src.algorithm.MaxSJA2.processMaxSJA2(
+            self.input_result,
+            self.k,
+            e=epsilon,
+            b=beta,
+            error=error_level,
+            ub=upper_bound,
+            p_num=processor_num,
+        )
+        self.true_result, self.noise_result, self.error = (
+            src.algorithm.MaxSJA2.get_result()
+        )
 
 
 class MultiMax(algorithm):
@@ -172,6 +214,7 @@ class MultiMax(algorithm):
         selectstmt = root[0].stmt
         if not isinstance(selectstmt, ast.SelectStmt):
             raise Exception
+        apply_unnest_subqueries(selectstmt)
         ImplicitJoin()(selectstmt)
         add_table_name(selectstmt, self.schema)(selectstmt)
         group_by()(selectstmt)
@@ -180,7 +223,7 @@ class MultiMax(algorithm):
         complete_query(self.fks)(selectstmt)
         userAdder(private_pk)(selectstmt)
         self.k = agg.index
-        self.rewrite_query = (stream.RawStream()(selectstmt))
+        self.rewrite_query = stream.RawStream()(selectstmt)
 
     def get_input_result(self):
         self.input_result = pg_exec(self.dbsetting, self.rewrite_query)
@@ -200,26 +243,38 @@ class MultiMax(algorithm):
         self.error = 0
 
     def process(self):
-        epsilon = float(self.parameters['epsilon'])
-        beta = float(self.parameters['beta'])
-        error_level = float(self.parameters['error_level'])
-        upper_bound = float(self.parameters['upper_bound'])
-        processor_num = int(self.parameters['processor_num'])
-        delta = float(self.parameters['delta'])
+        epsilon = float(self.parameters["epsilon"])
+        beta = float(self.parameters["beta"])
+        error_level = float(self.parameters["error_level"])
+        upper_bound = float(self.parameters["upper_bound"])
+        processor_num = int(self.parameters["processor_num"])
+        delta = float(self.parameters["delta"])
         # advanced composition
         beta = beta / self.num_query
-        epsilon = (math.sqrt(2 * self.num_query * math.log(1 / delta) + 4 * epsilon * self.num_query) - math.sqrt(
-            2 * self.num_query * math.log(1 / delta))) / (2 * self.num_query)
+        epsilon = (
+            math.sqrt(
+                2 * self.num_query * math.log(1 / delta) + 4 * epsilon * self.num_query
+            )
+            - math.sqrt(2 * self.num_query * math.log(1 / delta))
+        ) / (2 * self.num_query)
 
         if self.input_l == 1:
             for g_id in self.input_final_result.keys():
                 group = self.group_ids[g_id]
                 next_input = self.input_final_result[g_id]
                 if self.k == 0:
-                    self.k = len(next_input)-1
-                src.algorithm.MaxSJA1.processMaxSJA1(next_input, self.k, e=epsilon, b=beta,
-                                                                     error=error_level, ub=upper_bound)
-                true_result_k, noise_result_k, error_k = src.algorithm.MaxSJA1.get_result()
+                    self.k = len(next_input) - 1
+                src.algorithm.MaxSJA1.processMaxSJA1(
+                    next_input,
+                    self.k,
+                    e=epsilon,
+                    b=beta,
+                    error=error_level,
+                    ub=upper_bound,
+                )
+                true_result_k, noise_result_k, error_k = (
+                    src.algorithm.MaxSJA1.get_result()
+                )
                 self.true_result.append((true_result_k, group))
                 self.noise_result.append((noise_result_k, group))
                 self.error += error_k
@@ -228,11 +283,19 @@ class MultiMax(algorithm):
                 group = self.group_ids[g_id]
                 next_input = self.input_final_result[g_id]
                 if self.k == 0:
-                    self.k = len(next_input)-1
-                src.algorithm.MaxSJA2.processMaxSJA2(next_input, self.k, e=epsilon, b=beta,
-                                                                     error=error_level, ub=upper_bound,
-                                                                     p_num=processor_num)
-                true_result_k, noise_result_k, error_k = src.algorithm.MaxSJA2.get_result()
+                    self.k = len(next_input) - 1
+                src.algorithm.MaxSJA2.processMaxSJA2(
+                    next_input,
+                    self.k,
+                    e=epsilon,
+                    b=beta,
+                    error=error_level,
+                    ub=upper_bound,
+                    p_num=processor_num,
+                )
+                true_result_k, noise_result_k, error_k = (
+                    src.algorithm.MaxSJA2.get_result()
+                )
                 self.true_result.append((true_result_k, group))
                 self.noise_result.append((noise_result_k, group))
                 self.error += error_k
