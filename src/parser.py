@@ -634,3 +634,47 @@ class check_type(visitors.Visitor):
 
 if __name__ == "__main__":
     pass
+
+class UnnestSubqueries(visitors.Visitor):
+    def __init__(self):
+        self.sub_from_clauses = ()
+        self.sub_where_clauses = []
+
+    def visit_SubLink(self, ancestors, node):
+        if node.subLinkType in (enums.SubLinkType.ANY_SUBLINK, enums.SubLinkType.EXISTS_SUBLINK):
+            self.sub_from_clauses += node.subselect.fromClause
+
+            if node.subLinkType == enums.SubLinkType.ANY_SUBLINK:
+                if node.subselect.whereClause:
+                    self.sub_where_clauses.append(node.subselect.whereClause)
+                return ast.A_Expr(
+                    kind=enums.A_Expr_Kind.AEXPR_OP,
+                    name=(ast.String('='),),
+                    lexpr=node.testexpr,
+                    rexpr=node.subselect.targetList[0].val
+                )
+            elif node.subLinkType == enums.SubLinkType.EXISTS_SUBLINK:
+                if node.subselect.whereClause:
+                    return node.subselect.whereClause
+                else:
+                    return ast.A_Const(val=ast.Integer(1))
+
+def apply_unnest_subqueries(selectstmt):
+    while True:
+        unnester = UnnestSubqueries()
+        unnester(selectstmt)
+        if not unnester.sub_from_clauses:
+            break
+        
+        if selectstmt.fromClause is None:
+            selectstmt.fromClause = ()
+        selectstmt.fromClause += unnester.sub_from_clauses
+        
+        for sub_where in unnester.sub_where_clauses:
+            if selectstmt.whereClause:
+                selectstmt.whereClause = ast.BoolExpr(
+                    boolop=enums.BoolExprType.AND_EXPR,
+                    args=(selectstmt.whereClause, sub_where)
+                )
+            else:
+                selectstmt.whereClause = sub_where

@@ -1,0 +1,7 @@
+SELECT sum(l_extendedprice)
+FROM lineitem
+WHERE l_orderkey IN (
+    SELECT o_orderkey
+    FROM orders
+    WHERE o_custkey = 123
+);
