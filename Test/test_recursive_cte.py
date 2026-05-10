@@ -168,6 +168,73 @@ class TestEdgeCases:
         assert "sum" in result.lower()
         assert "WITH" not in result.upper()
 
+# ── Pipeline Integration Tests ───────────────────────────────────────
+
+class TestPipelineIntegration:
+    """Test that LEFT JOINs from unrolling survive the downstream pipeline."""
+
+    RECURSIVE_SQL = (
+        "WITH RECURSIVE subordinates AS ("
+        "  SELECT emp_id FROM Employees WHERE manager_id = 1"
+        "  UNION ALL"
+        "  SELECT e.emp_id FROM Employees e"
+        "  JOIN subordinates s ON s.emp_id = e.manager_id"
+        ") SELECT COUNT(*) FROM subordinates"
+    )
+
+    def _unroll_stmt(self, sql, k=3):
+        root = parser.parse_sql(sql)
+        stmt = root[0].stmt
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return apply_recursive_unroll(stmt, k=k)
+
+    def test_implicit_join_preserves_left_joins(self):
+        """ImplicitJoin should NOT decompose LEFT JOINs."""
+        from src.parser import ImplicitJoin
+        stmt = self._unroll_stmt(self.RECURSIVE_SQL, k=3)
+        ImplicitJoin()(stmt)
+        result = stream.RawStream()(stmt)
+        assert "LEFT JOIN" in result.upper()
+        assert result.upper().count("LEFT JOIN") == 2
+
+    def test_implicit_join_still_decomposes_inner_joins(self):
+        """ImplicitJoin should still work on regular INNER JOIN queries."""
+        from src.parser import ImplicitJoin
+        sql = "SELECT * FROM a INNER JOIN b ON a.id = b.aid"
+        root = parser.parse_sql(sql)
+        stmt = root[0].stmt
+        ImplicitJoin()(stmt)
+        result = stream.RawStream()(stmt)
+        # INNER JOIN should be decomposed into comma + WHERE
+        assert "JOIN" not in result.upper()
+        assert "WHERE" in result.upper()
+
+    def test_get_rename_finds_tables_in_left_joins(self):
+        """get_rename should discover all table aliases inside JoinExpr trees."""
+        from src.parser import get_rename
+        stmt = self._unroll_stmt(self.RECURSIVE_SQL, k=3)
+        renaming = get_rename()
+        renaming(stmt)
+        assert "employees" in renaming.rename_dict
+        aliases = renaming.rename_dict["employees"]
+        assert "e1" in aliases
+        assert "e2" in aliases
+        assert "e3" in aliases
+        assert len(aliases) == 3
+
+    def test_full_pipeline_no_crash(self):
+        """The full rewrite pipeline should not crash on recursive CTEs."""
+        from src.parser import ImplicitJoin, get_rename, add_table_name, aggregationVisit
+        stmt = self._unroll_stmt(self.RECURSIVE_SQL, k=3)
+        # These should all succeed without raising
+        ImplicitJoin()(stmt)
+        schema = {"employees": ["emp_id", "manager_id", "name"]}
+        add_table_name(stmt, schema)(stmt)
+        aggregationVisit()(stmt)
+        result = stream.RawStream()(stmt)
+        assert result  # non-empty output
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
