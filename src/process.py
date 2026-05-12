@@ -23,6 +23,7 @@ from src.parser import (
 )
 from src.recursive_cte import apply_recursive_unroll
 from src.util import pg_exec
+from src.recursive import rewrite_bounded_recursive_query
 
 
 class algorithm(ABC):
@@ -41,6 +42,16 @@ class algorithm(ABC):
     def get_input_result(self):
         self.input_result = pg_exec(self.dbsetting, self.rewrite_query)
 
+    def rewrite_recursive_if_needed(self, query, private_relations):
+        recursion_bound = int(self.parameters.get("recursion_bound", 10))
+        rewritten = rewrite_bounded_recursive_query(
+            query, private_relations, self.pks, recursion_bound
+        )
+        if rewritten is not None:
+            self.rewrite_query = rewritten
+            return True
+        return False
+
     @abstractmethod
     def rewrite(self, query, private_relations):
         pass
@@ -53,6 +64,8 @@ class algorithm(ABC):
 class FastSJA(algorithm):
 
     def rewrite(self, query, private_relations):
+        if self.rewrite_recursive_if_needed(query, private_relations):
+            return
         private_pk = get_primary_keys(self.pks, private_relations)
         root = parser.parse_sql(query)
         selectstmt = root[0].stmt
@@ -61,6 +74,8 @@ class FastSJA(algorithm):
         k = int(self.parameters.get("recursive_depth", 3))
         selectstmt = apply_recursive_unroll(selectstmt, k=k)
         apply_unnest_subqueries(selectstmt)
+        print("After unnesting subqueries:")
+        print(stream.RawStream()(selectstmt))
         ImplicitJoin()(selectstmt)
         add_table_name(selectstmt, self.schema)(selectstmt)
         aggregationVisit()(selectstmt)
@@ -96,6 +111,8 @@ class OptSJA(FastSJA):
 class MultiSJF(algorithm):
 
     def rewrite(self, query, private_relations):
+        if self.rewrite_recursive_if_needed(query, private_relations):
+            return
         private_pk = get_primary_keys(self.pks, private_relations)
         root = parser.parse_sql(query)
         selectstmt = root[0].stmt
@@ -144,6 +161,8 @@ class MaxSJA1(algorithm):
         self.k = None
 
     def rewrite(self, query, private_relations):
+        if self.rewrite_recursive_if_needed(query, private_relations):
+            return
         private_pk = get_primary_keys(self.pks, private_relations)
         root = parser.parse_sql(query)
         selectstmt = root[0].stmt
@@ -216,6 +235,8 @@ class MultiMax(algorithm):
         self.num_query = None
 
     def rewrite(self, query, private_relations):
+        if self.rewrite_recursive_if_needed(query, private_relations):
+            return
         private_pk = get_primary_keys(self.pks, private_relations)
         root = parser.parse_sql(query)
         selectstmt = root[0].stmt
