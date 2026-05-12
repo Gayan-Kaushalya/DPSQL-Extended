@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.util import config, pg_single, pg_test, get_schema
 from src.parser import check_type
+from src.recursive_cte import apply_recursive_unroll
 from pglast import parser, prettify
 from pglast import ast
 import src.process
@@ -74,22 +75,15 @@ def main():
         private_relations = private_relations + line + ","
 
     # first parsing for type check
-    #
-    # The original check_type visitor assumes that every SelectStmt it visits
-    # has a fromClause.  A WITH RECURSIVE query contains inner SELECT nodes
-    # such as constants/depth expressions that can violate that assumption.
-    # For recursive queries we choose the FastSJA path here and let
-    # process.rewrite(...) convert the recursive CTE into bounded row-level
-    # input before execution.
-    if is_recursive_query(query):
-        check = check_type(private_relations)
-    else:
-        root = parser.parse_sql(query)
-        selectstmt = root[0].stmt
-        if not isinstance(selectstmt, ast.SelectStmt):
-            raise Exception
-        check = check_type(private_relations)
-        check(selectstmt)
+    root = parser.parse_sql(query)
+    selectstmt = root[0].stmt
+    if not isinstance(selectstmt, ast.SelectStmt):
+        raise Exception
+    # Unroll recursive CTEs before type checking
+    recursive_depth = int(global_para.get("recursive_depth", "3"))
+    selectstmt = apply_recursive_unroll(selectstmt, k=recursive_depth)
+    check = check_type(private_relations)
+    check(selectstmt)
 
     filepath = get_project_root()
     output_file = open(opt.output, "w")
